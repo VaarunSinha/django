@@ -703,12 +703,12 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
 # Existing test cases for views
 @override_settings(ROOT_URLCONF="decorators.urls")
 class AsyncMethodDecoratorViewTests(SimpleTestCase):
-    async def test_view1(self):
-        response = await self.client.get(reverse("view1"))
+    def test_view1(self):
+        response = self.client.get(reverse("view1"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"hi")
 
-    async def test_view2(self):
-        response = await self.client.get(reverse("view2"))
+    def test_view2(self):
+        response = self.client.get(reverse("view2"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"hi")
