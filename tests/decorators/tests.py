@@ -437,14 +437,278 @@ class MethodDecoratorTests(SimpleTestCase):
         self.assertIsNotNone(func_module)
 
 
+def async_simple_dec_m(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
+
+
+def async_myattr_dec_m(func):
+    func.myattr = True
+    return func
+
+
+def async_myattr2_dec_m(func):
+    func.myattr2 = True
+    return func
+
+
+class AsyncMethodDecoratorTests(SimpleTestCase):
+    """
+    Tests for async method_decorator
+    """
+
+    async def test_preserve_signature(self):
+        class Test:
+            @async_simple_dec_m
+            async def say(self, arg):
+                return arg
+
+        result = await Test().say("hello")
+        self.assertEqual("hello", result)
+
+    async def test_preserve_attributes(self):
+        # Decorate using method_decorator() on the method.
+        class TestPlain:
+            @async_myattr_dec_m
+            @async_myattr2_dec_m
+            async def method(self):
+                "A method"
+                pass
+
+        # Decorate using method_decorator() on both the class and the method.
+        # The decorators applied to the methods are applied before the ones
+        # applied to the class.
+        @method_decorator(async_myattr_dec_m, "method")
+        class TestMethodAndClass:
+            @method_decorator(async_myattr2_dec_m)
+            async def method(self):
+                "A method"
+                pass
+
+        # Decorate using an iterable of function decorators.
+        @method_decorator((async_myattr_dec_m, async_myattr2_dec_m), "method")
+        class TestFunctionIterable:
+            async def method(self):
+                "A method"
+                pass
+
+        # Decorate using an iterable of method decorators.
+        decorators = (async_myattr_dec_m, async_myattr2_dec_m)
+
+        @method_decorator(decorators, "method")
+        class TestMethodIterable:
+            async def method(self):
+                "A method"
+                pass
+
+        tests = (
+            TestPlain,
+            TestMethodAndClass,
+            TestFunctionIterable,
+            TestMethodIterable,
+        )
+        for Test in tests:
+            with self.subTest(Test=Test):
+                self.assertIs(getattr(Test().method, "myattr", False), True)
+                self.assertIs(getattr(Test().method, "myattr2", False), True)
+                self.assertIs(getattr(Test.method, "myattr", False), True)
+                self.assertIs(getattr(Test.method, "myattr2", False), True)
+                self.assertEqual(Test.method.__doc__, "A method")
+                self.assertEqual(Test.method.__name__, "method")
+
+    async def test_new_attribute(self):
+        """A decorator that sets a new attribute on the method."""
+
+        def decorate(func):
+            func.x = 1
+            return func
+
+        class MyClass:
+            @method_decorator(decorate)
+            async def method(self):
+                return True
+
+        obj = MyClass()
+        self.assertEqual(obj.method.x, 1)
+        self.assertTrue(await obj.method())
+
+    async def test_bad_iterable(self):
+        decorators = {async_myattr_dec_m, async_myattr2_dec_m}
+        msg = "'set' object is not subscriptable"
+        with self.assertRaisesMessage(TypeError, msg):
+
+            @method_decorator(decorators, "method")
+            class TestIterable:
+                async def method(self):
+                    "A method"
+                    pass
+
+    async def test_argumented(self):
+        class Test:
+            @method_decorator(async_myattr_dec_m)
+            async def method(self):
+                return True
+
+        self.assertTrue(await Test().method())
+
+    async def test_descriptors(self):
+        def original_dec(wrapped):
+            @wraps(wrapped)
+            async def _wrapped(*args, **kwargs):
+                return await wrapped(*args, **kwargs)
+
+            return _wrapped
+
+        method_dec = method_decorator(original_dec)
+
+        class bound_wrapper:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+                self.__name__ = wrapped.__name__
+
+            async def __call__(self, *args, **kwargs):
+                return await self.wrapped(*args, **kwargs)
+
+            def __get__(self, instance, cls=None):
+                return self
+
+        class descriptor_wrapper:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+                self.__name__ = wrapped.__name__
+
+            def __get__(self, instance, cls=None):
+                return bound_wrapper(self.wrapped.__get__(instance, cls))
+
+        class Test:
+            @method_dec
+            @descriptor_wrapper
+            async def method(self, arg):
+                return arg
+
+        self.assertEqual(await Test().method(1), 1)
+
+    async def test_class_decoration(self):
+        """
+        @method_decorator can be used to decorate a class and its methods.
+        """
+
+        def deco(func):
+            async def _wrapper(*args, **kwargs):
+                return True
+
+            return _wrapper
+
+        @method_decorator(deco, name="method")
+        class Test:
+            async def method(self):
+                return False
+
+        self.assertTrue(await Test().method())
+
+    async def test_tuple_of_decorators(self):
+        """
+        @method_decorator can accept a tuple of decorators.
+        """
+
+        def add_question_mark(func):
+            async def _wrapper(*args, **kwargs):
+                return await func(*args, **kwargs) + "?"
+
+            return _wrapper
+
+        def add_exclamation_mark(func):
+            async def _wrapper(*args, **kwargs):
+                return await func(*args, **kwargs) + "!"
+
+            return _wrapper
+
+        decorators = (add_exclamation_mark, add_question_mark)
+
+        @method_decorator(decorators, name="method")
+        class TestFirst:
+            async def method(self):
+                return "hello world"
+
+        class TestSecond:
+            @method_decorator(decorators)
+            async def method(self):
+                return "hello world"
+
+        self.assertEqual(await TestFirst().method(), "hello world?!")
+        self.assertEqual(await TestSecond().method(), "hello world?!")
+
+    async def test_invalid_non_callable_attribute_decoration(self):
+        """
+        @method_decorator on a non-callable attribute raises an error.
+        """
+        msg = (
+            "Cannot decorate 'prop' as it isn't a callable attribute of "
+            "<class 'Test'> (1)"
+        )
+        with self.assertRaisesMessage(TypeError, msg):
+
+            @method_decorator(lambda: None, name="prop")
+            class Test:
+                prop = 1
+
+                @classmethod
+                def __module__(cls):
+                    return "tests"
+
+    async def test_invalid_method_name_to_decorate(self):
+        """
+        @method_decorator on a nonexistent method raises an error.
+        """
+        msg = (
+            "The keyword argument `name` must be the name of a method of the "
+            "decorated class: <class 'Test'>. Got 'nonexistent_method' instead"
+        )
+        with self.assertRaisesMessage(ValueError, msg):
+
+            @method_decorator(lambda: None, name="nonexistent_method")
+            class Test:
+                @classmethod
+                def __module__(cls):
+                    return "tests"
+
+    async def test_wrapper_assignments(self):
+        """@method_decorator preserves wrapper assignments."""
+        func_name = None
+        func_module = None
+
+        def decorator(func):
+            @wraps(func)
+            async def inner(*args, **kwargs):
+                nonlocal func_name, func_module
+                func_name = getattr(func, "__name__", None)
+                func_module = getattr(func, "__module__", None)
+                return await func(*args, **kwargs)
+
+            return inner
+
+        class Test:
+            @method_decorator(decorator)
+            async def method(self):
+                return "tests"
+
+        await Test().method()
+        self.assertEqual(func_name, "method")
+        self.assertIsNotNone(func_module)
+
+
+# Existing test cases for views
 @override_settings(ROOT_URLCONF="decorators.urls")
-class AsyncMethodDecoratorTest(SimpleTestCase):
-    def test_view1(self):
-        response = self.client.get(reverse("view1"))
+class AsyncMethodDecoratorViewTests(SimpleTestCase):
+    async def test_view1(self):
+        response = await self.client.get(reverse("view1"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"hi")
 
-    def test_view2(self):
-        response = self.client.get(reverse("view2"))
+    async def test_view2(self):
+        response = await self.client.get(reverse("view2"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"hi")
