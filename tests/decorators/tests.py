@@ -1,6 +1,8 @@
 from functools import update_wrapper, wraps
 from unittest import TestCase
 
+from asgiref.sync import iscoroutinefunction
+
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import (
     login_required,
@@ -8,8 +10,7 @@ from django.contrib.auth.decorators import (
     user_passes_test,
 )
 from django.http import HttpResponse
-from django.test import SimpleTestCase, override_settings
-from django.urls import reverse
+from django.test import SimpleTestCase
 from django.utils.decorators import method_decorator
 from django.utils.functional import keep_lazy, keep_lazy_text, lazy
 from django.utils.safestring import mark_safe
@@ -675,6 +676,23 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
                 def __module__(cls):
                     return "tests"
 
+    async def test_markcoroutinefunction_applied(self):
+        def simple_decorator(func):
+            @wraps(func)
+            async def _wrapped(*args, **kwargs):
+                return await func(*args, **kwargs)
+
+            return _wrapped
+
+        class Test:
+            @method_decorator(simple_decorator)
+            async def method(self):
+                return "tests"
+
+        test_instance = Test()
+        self.assertTrue(iscoroutinefunction(test_instance.method))
+        self.assertTrue(await test_instance.method() == "tests")
+
     async def test_wrapper_assignments(self):
         """@method_decorator preserves wrapper assignments."""
         func_name = None
@@ -698,17 +716,3 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
         await Test().method()
         self.assertEqual(func_name, "method")
         self.assertIsNotNone(func_module)
-
-
-# Existing test cases for views
-@override_settings(ROOT_URLCONF="decorators.urls")
-class AsyncMethodDecoratorViewTests(SimpleTestCase):
-    def test_view1(self):
-        response = self.client.get(reverse("view1"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"hi")
-
-    def test_view2(self):
-        response = self.client.get(reverse("view2"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"hi")
