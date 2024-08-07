@@ -470,12 +470,12 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
         result = await Test().say("hello")
         self.assertEqual("hello", result)
 
-    async def test_preserve_attributes(self):
+    def test_preserve_attributes(self):
         # Decorate using method_decorator() on the method.
         class TestPlain:
             @async_myattr_dec_m
             @async_myattr2_dec_m
-            async def method(self):
+            def method(self):
                 "A method"
                 pass
 
@@ -485,14 +485,14 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
         @method_decorator(async_myattr_dec_m, "method")
         class TestMethodAndClass:
             @method_decorator(async_myattr2_dec_m)
-            async def method(self):
+            def method(self):
                 "A method"
                 pass
 
         # Decorate using an iterable of function decorators.
         @method_decorator((async_myattr_dec_m, async_myattr2_dec_m), "method")
         class TestFunctionIterable:
-            async def method(self):
+            def method(self):
                 "A method"
                 pass
 
@@ -501,7 +501,7 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
 
         @method_decorator(decorators, "method")
         class TestMethodIterable:
-            async def method(self):
+            def method(self):
                 "A method"
                 pass
 
@@ -536,24 +536,24 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
         self.assertEqual(obj.method.x, 1)
         self.assertTrue(await obj.method())
 
-    async def test_bad_iterable(self):
+    def test_bad_iterable(self):
         decorators = {async_myattr_dec_m, async_myattr2_dec_m}
         msg = "'set' object is not subscriptable"
         with self.assertRaisesMessage(TypeError, msg):
 
             @method_decorator(decorators, "method")
             class TestIterable:
-                async def method(self):
+                def method(self):
                     "A method"
                     pass
 
-    async def test_argumented(self):
+    def test_argumented(self):
         class Test:
             @method_decorator(async_myattr_dec_m)
-            async def method(self):
+            def method(self):
                 return True
 
-        self.assertTrue(await Test().method())
+        self.assertTrue(Test().method())
 
     async def test_descriptors(self):
         def original_dec(wrapped):
@@ -592,13 +592,13 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
 
         self.assertEqual(await Test().method(1), 1)
 
-    async def test_class_decoration(self):
+    def test_class_decoration(self):
         """
         @method_decorator can be used to decorate a class and its methods.
         """
 
         def deco(func):
-            async def _wrapper(*args, **kwargs):
+            def _wrapper(*args, **kwargs):
                 return True
 
             return _wrapper
@@ -608,7 +608,7 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
             async def method(self):
                 return False
 
-        self.assertTrue(await Test().method())
+        self.assertTrue(Test().method())
 
     async def test_tuple_of_decorators(self):
         """
@@ -642,7 +642,7 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
         self.assertEqual(await TestFirst().method(), "hello world?!")
         self.assertEqual(await TestSecond().method(), "hello world?!")
 
-    async def test_invalid_non_callable_attribute_decoration(self):
+    def test_invalid_non_callable_attribute_decoration(self):
         """
         @method_decorator on a non-callable attribute raises an error.
         """
@@ -660,7 +660,7 @@ class AsyncMethodDecoratorTests(SimpleTestCase):
                 def __module__(cls):
                     return "tests"
 
-    async def test_invalid_method_name_to_decorate(self):
+    def test_invalid_method_name_to_decorate(self):
         """
         @method_decorator on a nonexistent method raises an error.
         """
